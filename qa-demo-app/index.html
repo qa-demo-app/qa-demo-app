@@ -1,0 +1,483 @@
+<!doctype html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/><title>QA Automation Practice Website | Playwright, Selenium &amp; API Testing</title>
+<meta name="description" content="Free QA automation practice website with login, forms, tables, alerts, iframes, file upload, drag and drop, API and WebSocket pages. Built for Playwright, Selenium and API testing practice."/>
+<link rel="canonical" href="https://qa-demo-app.github.io/qa-demo-app/"/>
+<meta property="og:url" content="https://qa-demo-app.github.io/qa-demo-app/"/>
+<meta name="robots" content="index,follow"/>
+<meta property="og:title" content="QA Automation Practice Website | Playwright, Selenium &amp; API Testing"/>
+<meta property="og:description" content="Free QA automation practice website with login, forms, tables, alerts, iframes, file upload, drag and drop, API and WebSocket pages. Built for Playwright, Selenium and API testing practice."/>
+<meta property="og:type" content="website"/>
+<style>:root{--bg:linear-gradient(135deg,#ff7b1d 0%,#f5a03d 50%,#ffc46b 100%);--fg:#0f172a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:linear-gradient(135deg,#ff7b1d 0%,#f5a03d 50%,#ffc46b 100%);--fg:#0f172a}}:root[data-theme="dark"]{--bg:linear-gradient(135deg,#ff7b1d 0%,#f5a03d 50%,#ffc46b 100%);--fg:#0f172a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;min-height:100vh;background:var(--bg) fixed;color:var(--fg)}h1{color:#ff7b1d}h2{color:#3b3f5c}[data-testid=action-items-title]{color:#000}a{color:#e96a0c}button{background:#ff7b1d;color:#fff;border:0;border-radius:20px;padding:6px 16px;cursor:pointer}button:hover{background:#e96a0c}button:disabled{opacity:.5;cursor:not-allowed}pre{background:rgba(148,163,184,.15);padding:8px;overflow-x:auto}td,th{padding:4px 8px;text-align:left}[data-testid=hover-box],[data-testid=ctx-box]{color:#0f172a}input,select,textarea,button{max-width:100%}</style></head>
+<body><div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script>(() => {
+  const users = [{ email: 'qa.tester@nivi.dev', password: 'Test@1234', name: 'Nivi Tester', role: 'user' }, { email: 'admin@nivi.dev', password: 'Admin@1234', name: 'Admin', role: 'admin' }];
+  const tokens = {}, cats = ['Electronics', 'Accessories', 'Displays'];
+  const products = Array.from({ length: 24 }, (_, i) => ({ id: i + 1, name: ['Laptop', 'Phone', 'Headset', 'Keyboard', 'Mouse', 'Monitor'][i % 6] + ' ' + (i + 1), category: cats[i % 3], price: 20 + i * 13, description: 'Product ' + (i + 1) + ' description' }));
+  let items = [{ id: 1, name: 'Sample', qty: 1 }], nid = 2;
+  const R = (s, b) => new Response(s === 204 ? null : JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json' } });
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  async function route(method, url, body, tok) {
+    const u = new URL(url, location.href), p = u.pathname.replace(/^.*?(\/api\/)/, '/api/'), q = u.searchParams, me = tokens[tok];
+    if (p === '/api/login' && method === 'POST') { const { email, password } = body || {}; if (!email || !password) return R(400, { error: 'Email and password are required' }); const x = users.find(v => v.email === email && v.password === password); if (!x) return R(401, { error: 'Invalid credentials' }); const t = 'tok_' + Math.random().toString(36).slice(2); tokens[t] = x; return R(200, { token: t, user: { email: x.email, name: x.name, role: x.role } }); }
+    if (p === '/api/logout') { if (!me) return R(401, { error: 'Unauthorized' }); delete tokens[tok]; return R(200, { ok: true }); }
+    if (p === '/api/register') { const { name, email, password } = body || {}; if (!name || !/^\S+@\S+\.\S+$/.test(email || '') || (password || '').length < 8) return R(400, { error: 'Invalid input' }); if (users.some(v => v.email === email)) return R(409, { error: 'Email already registered' }); users.push({ name, email, password, role: 'user' }); return R(201, { ok: true }); }
+    if (p === '/api/me') return me ? R(200, { email: me.email, name: me.name, role: me.role }) : R(401, { error: 'Unauthorized' });
+    if (p === '/api/admin') return !me ? R(401, { error: 'Unauthorized' }) : me.role !== 'admin' ? R(403, { error: 'Forbidden' }) : R(200, { secret: 'admin-data' });
+    if (p === '/api/products') { const s = q.get('sort'), qq = (q.get('q') || '').toLowerCase(), c = q.get('category'), pg = +(q.get('page') || 1); const l = products.filter(x => x.name.toLowerCase().includes(qq) && (!c || x.category === c)); if (s === 'price-asc') l.sort((a, b) => a.price - b.price); if (s === 'price-desc') l.sort((a, b) => b.price - a.price); if (s === 'name') l.sort((a, b) => a.name.localeCompare(b.name)); return R(200, { total: l.length, page: pg, items: l.slice((pg - 1) * 6, pg * 6) }); }
+    let m = p.match(/^\/api\/products\/(\d+)$/); if (m) { const x = products.find(v => v.id === +m[1]); return x ? R(200, x) : R(404, { error: 'Not found' }); }
+    if (p === '/api/items') { if (method === 'POST') { if (!body || !body.name) return R(400, { error: 'name required' }); const i = { id: nid++, qty: 1, ...body }; items.push(i); return R(201, i); } return R(200, items); }
+    m = p.match(/^\/api\/items\/(\d+)$/); if (m) { const id = +m[1], i = items.findIndex(v => v.id === id); if (i < 0) return R(404, { error: 'Not found' }); if (method === 'PUT') return R(200, (items[i] = { id, ...body })); if (method === 'PATCH') return R(200, Object.assign(items[i], body)); if (method === 'DELETE') { items.splice(i, 1); return R(204); } }
+    m = p.match(/^\/api\/status\/(\d+)$/); if (m) { const c = +m[1]; return R(c >= 200 && c < 600 && c !== 204 ? c : 400, { status: c, message: 'Responded with ' + c }); }
+    if (p === '/api/slow') { const ms = Math.min(+(q.get('ms') || 3000), 10000); await sleep(ms); return R(200, { delayed: ms }); }
+    if (p === '/api/reset') { items = [{ id: 1, name: 'Sample', qty: 1 }]; nid = 2; return R(200, { ok: true }); }
+    return R(404, { error: 'Unknown endpoint' });
+  }
+  const real = window.fetch.bind(window);
+  window.fetch = (input, init = {}) => { const url = typeof input === 'string' ? input : input.url; if (!/\/api\//.test(url)) return real(input, init); const h = init.headers || {}; let b; try { b = init.body ? JSON.parse(init.body) : undefined; } catch { b = undefined; } return route((init.method || 'GET').toUpperCase(), url, b, (h.Authorization || '').replace('Bearer ', '')); };
+  window.WebSocket = class { constructor() { setTimeout(() => { this.onopen && this.onopen(); this.onmessage && this.onmessage({ data: 'Welcome to Nivi WebSocket' }); }, 300); } send(m) { setTimeout(() => this.onmessage && this.onmessage({ data: 'Echo: ' + m }), 150); } close() { this.onclose && this.onclose(); } };
+})();
+</script>
+<script>const {useEffect,useRef,useState}=React;
+
+const api = async (path, opt = {}) => {
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+    const r = await fetch(path, { ...opt, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...opt.headers }, body: opt.body && JSON.stringify(opt.body) });
+    const text = await r.text();
+    let data = text;
+    try {
+        data = JSON.parse(text);
+    }
+    catch { }
+    return { status: r.status, data };
+};
+const Page = ({ id, title, children }) => React.createElement("section", null,
+    React.createElement("h1", { "data-testid": `${id}-title` }, title),
+    children);
+const Out = ({ v, id = 'output' }) => React.createElement("pre", { "data-testid": id, "aria-live": "polite" }, typeof v === 'string' ? v : JSON.stringify(v, null, 2));
+const Field = ({ label, id, err, ...p }) => React.createElement("div", null,
+    React.createElement("label", { htmlFor: id }, label),
+    React.createElement("input", { id: id, "data-testid": id, ...p }),
+    err && React.createElement("span", { role: "alert", "data-testid": `${id}-error` }, err));
+function Login() {
+    const [f, setF] = useState({ email: '', password: '', remember: false });
+    const [err, setErr] = useState('');
+    const [ok, setOk] = useState('');
+    const submit = async (e) => {
+        e.preventDefault();
+        setErr('');
+        setOk('');
+        if (!f.email)
+            return setErr('Email is required');
+        if (!f.password)
+            return setErr('Password is required');
+        const r = await api('/api/login', { method: 'POST', body: f });
+        if (r.status !== 200)
+            return setErr(r.data.error);
+        (f.remember ? localStorage : sessionStorage).setItem('token', r.data.token);
+        setOk(`Welcome, ${r.data.user.name}`);
+    };
+    return React.createElement(Page, { id: "login", title: "Login" },
+        React.createElement("form", { onSubmit: submit, noValidate: true },
+            React.createElement(Field, { label: "Email", id: "login-email", type: "email", value: f.email, onChange: (e) => setF({ ...f, email: e.target.value }) }),
+            React.createElement(Field, { label: "Password", id: "login-password", type: "password", value: f.password, onChange: (e) => setF({ ...f, password: e.target.value }) }),
+            React.createElement("label", null,
+                React.createElement("input", { type: "checkbox", "data-testid": "login-remember", checked: f.remember, onChange: e => setF({ ...f, remember: e.target.checked }) }),
+                " Remember me"),
+            React.createElement("button", { type: "submit", "data-testid": "login-submit" }, "Sign in")),
+        err && React.createElement("p", { role: "alert", "data-testid": "login-error" }, err),
+        ok && React.createElement("p", { "data-testid": "login-success" }, ok),
+        React.createElement("p", null, "Valid: qa.tester@nivi.dev / Test@1234 \u00A0 Admin: admin@nivi.dev / Admin@1234"));
+}
+function Register() {
+    const [f, setF] = useState({ name: '', email: '', password: '', confirm: '', terms: false });
+    const [e, setE] = useState({});
+    const [msg, setMsg] = useState('');
+    const submit = async (ev) => {
+        ev.preventDefault();
+        const n = {};
+        if (!f.name.trim())
+            n.name = 'Name is required';
+        if (!/^\S+@\S+\.\S+$/.test(f.email))
+            n.email = 'Enter a valid email';
+        if (!/^(?=.*\d).{8,}$/.test(f.password))
+            n.password = 'Min 8 chars incl. a number';
+        if (f.confirm !== f.password)
+            n.confirm = 'Passwords do not match';
+        if (!f.terms)
+            n.terms = 'Accept the terms';
+        setE(n);
+        setMsg('');
+        if (Object.keys(n).length)
+            return;
+        const r = await api('/api/register', { method: 'POST', body: f });
+        setMsg(r.status === 201 ? 'Registration successful' : r.data.error);
+    };
+    const set = (k) => (ev) => setF({ ...f, [k]: ev.target.value });
+    return React.createElement(Page, { id: "register", title: "Register" },
+        React.createElement("form", { onSubmit: submit, noValidate: true },
+            React.createElement(Field, { label: "Full name", id: "reg-name", value: f.name, onChange: set('name'), err: e.name }),
+            React.createElement(Field, { label: "Email", id: "reg-email", value: f.email, onChange: set('email'), err: e.email }),
+            React.createElement(Field, { label: "Password", id: "reg-password", type: "password", value: f.password, onChange: set('password'), err: e.password }),
+            React.createElement(Field, { label: "Confirm password", id: "reg-confirm", type: "password", value: f.confirm, onChange: set('confirm'), err: e.confirm }),
+            React.createElement("label", null,
+                React.createElement("input", { type: "checkbox", "data-testid": "reg-terms", checked: f.terms, onChange: ev => setF({ ...f, terms: ev.target.checked }) }),
+                " I accept the terms"),
+            e.terms && React.createElement("span", { role: "alert", "data-testid": "reg-terms-error" }, e.terms),
+            React.createElement("button", { type: "submit", "data-testid": "reg-submit" }, "Create account")),
+        React.createElement("p", { "data-testid": "reg-message" }, msg));
+}
+function Products({ add }) {
+    const [q, setQ] = useState('');
+    const [category, setC] = useState('');
+    const [sort, setS] = useState('');
+    const [page, setP] = useState(1);
+    const [d, setD] = useState({ items: [], total: 0 });
+    const [sel, setSel] = useState(null);
+    useEffect(() => { api(`/api/products?q=${q}&category=${category}&sort=${sort}&page=${page}`).then(r => setD(r.data)); }, [q, category, sort, page]);
+    const pages = Math.max(1, Math.ceil(d.total / 6));
+    return React.createElement(Page, { id: "products", title: "Products" },
+        React.createElement("input", { "aria-label": "Search products", "data-testid": "product-search", placeholder: "Search", value: q, onChange: e => { setQ(e.target.value); setP(1); } }),
+        React.createElement("select", { "aria-label": "Category", "data-testid": "product-category", value: category, onChange: e => { setC(e.target.value); setP(1); } },
+            React.createElement("option", { value: "" }, "All"),
+            React.createElement("option", null, "Electronics"),
+            React.createElement("option", null, "Accessories"),
+            React.createElement("option", null, "Displays")),
+        React.createElement("select", { "aria-label": "Sort", "data-testid": "product-sort", value: sort, onChange: e => setS(e.target.value) },
+            React.createElement("option", { value: "" }, "Default"),
+            React.createElement("option", { value: "name" }, "Name"),
+            React.createElement("option", { value: "price-asc" }, "Price \u2191"),
+            React.createElement("option", { value: "price-desc" }, "Price \u2193")),
+        React.createElement("p", { "data-testid": "product-count" },
+            d.total,
+            " results"),
+        d.items.length === 0 && React.createElement("p", { "data-testid": "products-empty" }, "No products found"),
+        React.createElement("ul", { className: "grid" }, d.items.map((p) => React.createElement("li", { key: p.id, "data-testid": `product-${p.id}` },
+            React.createElement("h3", null, p.name),
+            React.createElement("span", { "data-testid": `product-price-${p.id}` },
+                "$",
+                p.price),
+            " ",
+            React.createElement("small", null, p.category),
+            React.createElement("br", null),
+            React.createElement("button", { "data-testid": `product-details-${p.id}`, onClick: () => setSel(p) }, "Details"),
+            " ",
+            React.createElement("button", { "data-testid": `add-to-cart-${p.id}`, onClick: () => add(p) }, "Add to cart")))),
+        React.createElement("button", { "data-testid": "page-prev", disabled: page <= 1, onClick: () => setP(page - 1) }, "Prev"),
+        " ",
+        React.createElement("span", { "data-testid": "page-indicator" },
+            "Page ",
+            page,
+            " of ",
+            pages),
+        " ",
+        React.createElement("button", { "data-testid": "page-next", disabled: page >= pages, onClick: () => setP(page + 1) }, "Next"),
+        sel && React.createElement("div", { role: "dialog", "aria-label": "Product details", "data-testid": "product-modal" },
+            React.createElement("h2", null, sel.name),
+            React.createElement("p", null, sel.description),
+            React.createElement("button", { "data-testid": "modal-close", onClick: () => setSel(null) }, "Close")));
+}
+function Cart({ cart, setCart }) {
+    const [step, setStep] = useState('cart');
+    const [a, setA] = useState({ address: '', city: '', zip: '', card: '' });
+    const [err, setErr] = useState('');
+    const [order, setOrder] = useState('');
+    const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+    const upd = (id, d) => setCart(cart.map((i) => i.id === id ? { ...i, qty: Math.max(1, i.qty + d) } : i));
+    const place = () => {
+        if (!a.address || !a.city || !/^\d{5}$/.test(a.zip))
+            return setErr('Valid address, city and 5-digit ZIP required');
+        if (!/^\d{16}$/.test(a.card))
+            return setErr('Card must be 16 digits (try 4111111111111111)');
+        setOrder('ORD-' + Math.floor(100000 + Math.random() * 900000));
+        setCart([]);
+        setStep('done');
+    };
+    if (step === 'done')
+        return React.createElement(Page, { id: "order", title: "Order Confirmation" },
+            React.createElement("p", { "data-testid": "order-number" }, order),
+            React.createElement("p", null, "Thank you for your purchase!"));
+    return React.createElement(Page, { id: "cart", title: "Cart" }, cart.length === 0 ? React.createElement("p", { "data-testid": "cart-empty" }, "Your cart is empty") : React.createElement(React.Fragment, null,
+        React.createElement("table", null,
+            React.createElement("tbody", null, cart.map((i) => React.createElement("tr", { key: i.id, "data-testid": `cart-row-${i.id}` },
+                React.createElement("td", null, i.name),
+                React.createElement("td", null,
+                    React.createElement("button", { "aria-label": `Decrease ${i.name}`, "data-testid": `qty-dec-${i.id}`, onClick: () => upd(i.id, -1) }, "-"),
+                    " ",
+                    React.createElement("span", { "data-testid": `qty-${i.id}` }, i.qty),
+                    " ",
+                    React.createElement("button", { "aria-label": `Increase ${i.name}`, "data-testid": `qty-inc-${i.id}`, onClick: () => upd(i.id, 1) }, "+")),
+                React.createElement("td", null,
+                    "$",
+                    i.price * i.qty),
+                React.createElement("td", null,
+                    React.createElement("button", { "data-testid": `remove-${i.id}`, onClick: () => setCart(cart.filter((x) => x.id !== i.id)) }, "Remove")))))),
+        React.createElement("p", { "data-testid": "cart-total" },
+            "Total: $",
+            total),
+        step === 'cart' ? React.createElement("button", { "data-testid": "checkout-btn", onClick: () => setStep('checkout') }, "Checkout") : React.createElement("div", null,
+            ['address', 'city', 'zip', 'card'].map(k => React.createElement(Field, { key: k, label: k[0].toUpperCase() + k.slice(1), id: `co-${k}`, value: a[k], onChange: (e) => setA({ ...a, [k]: e.target.value }) })),
+            err && React.createElement("p", { role: "alert", "data-testid": "checkout-error" }, err),
+            React.createElement("button", { "data-testid": "place-order", onClick: place }, "Place order"))));
+}
+function Forms() {
+    const [v, setV] = useState({ text: '', dd: 'in', chk: [], radio: '', date: '', range: 50, area: '' });
+    const [out, setOut] = useState('');
+    const tog = (x) => setV({ ...v, chk: v.chk.includes(x) ? v.chk.filter((y) => y !== x) : [...v.chk, x] });
+    return React.createElement(Page, { id: "forms", title: "Forms Playground" },
+        React.createElement("form", { onSubmit: e => { e.preventDefault(); setOut(JSON.stringify(v)); } },
+            React.createElement(Field, { label: "Textbox", id: "f-text", value: v.text, onChange: (e) => setV({ ...v, text: e.target.value }) }),
+            React.createElement("label", { htmlFor: "f-dd" }, "Country"),
+            React.createElement("select", { id: "f-dd", "data-testid": "f-dd", value: v.dd, onChange: e => setV({ ...v, dd: e.target.value }) },
+                React.createElement("option", { value: "in" }, "India"),
+                React.createElement("option", { value: "us" }, "USA"),
+                React.createElement("option", { value: "uk" }, "UK")),
+            React.createElement("fieldset", null,
+                React.createElement("legend", null, "Hobbies"),
+                ['Reading', 'Music', 'Sports'].map(h => React.createElement("label", { key: h },
+                    React.createElement("input", { type: "checkbox", "data-testid": `f-chk-${h.toLowerCase()}`, checked: v.chk.includes(h), onChange: () => tog(h) }),
+                    h))),
+            React.createElement("fieldset", null,
+                React.createElement("legend", null, "Gender"),
+                ['Female', 'Male', 'Other'].map(g => React.createElement("label", { key: g },
+                    React.createElement("input", { type: "radio", name: "g", "data-testid": `f-radio-${g.toLowerCase()}`, checked: v.radio === g, onChange: () => setV({ ...v, radio: g }) }),
+                    g))),
+            React.createElement(Field, { label: "Date of birth", id: "f-date", type: "date", value: v.date, onChange: (e) => setV({ ...v, date: e.target.value }) }),
+            React.createElement(Field, { label: "Rating", id: "f-range", type: "range", min: "0", max: "100", value: v.range, onChange: (e) => setV({ ...v, range: +e.target.value }) }),
+            React.createElement("output", { "data-testid": "f-range-value" }, v.range),
+            React.createElement("label", { htmlFor: "f-area" }, "Comments"),
+            React.createElement("textarea", { id: "f-area", "data-testid": "f-area", value: v.area, onChange: e => setV({ ...v, area: e.target.value }) }),
+            React.createElement("button", { type: "submit", "data-testid": "f-submit" }, "Submit")),
+        React.createElement(Out, { v: out, id: "f-result" }));
+}
+const PEOPLE = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: ['Asha', 'Ravi', 'Meena', 'Karthik', 'Divya', 'Suresh'][i % 6] + ' ' + String.fromCharCode(65 + i), role: ['QA', 'Dev', 'PM'][i % 3], age: 22 + i * 2 }));
+function Tables() {
+    const [rows, setRows] = useState(PEOPLE);
+    const [q, setQ] = useState('');
+    const [role, setRole] = useState('');
+    const [dir, setDir] = useState(1);
+    const [page, setPage] = useState(1);
+    const [edit, setEdit] = useState(null);
+    const list = rows.filter(r => r.name.toLowerCase().includes(q.toLowerCase()) && (!role || r.role === role)).sort((a, b) => a.name.localeCompare(b.name) * dir);
+    const pages = Math.max(1, Math.ceil(list.length / 5));
+    const view = list.slice((page - 1) * 5, page * 5);
+    return React.createElement(Page, { id: "tables", title: "Tables" },
+        React.createElement("input", { "aria-label": "Search table", "data-testid": "table-search", value: q, onChange: e => { setQ(e.target.value); setPage(1); } }),
+        React.createElement("select", { "aria-label": "Role filter", "data-testid": "table-role", value: role, onChange: e => { setRole(e.target.value); setPage(1); } },
+            React.createElement("option", { value: "" }, "All"),
+            React.createElement("option", null, "QA"),
+            React.createElement("option", null, "Dev"),
+            React.createElement("option", null, "PM")),
+        React.createElement("table", { "data-testid": "data-table" },
+            React.createElement("thead", null,
+                React.createElement("tr", null,
+                    React.createElement("th", null,
+                        React.createElement("button", { "data-testid": "sort-name", onClick: () => setDir(-dir) },
+                            "Name ",
+                            dir > 0 ? '▲' : '▼')),
+                    React.createElement("th", null, "Role"),
+                    React.createElement("th", null, "Age"),
+                    React.createElement("th", null, "Actions"))),
+            React.createElement("tbody", null, view.map(r => React.createElement("tr", { key: r.id, "data-testid": `row-${r.id}` },
+                React.createElement("td", null, edit === r.id ? React.createElement("input", { "aria-label": "Edit name", "data-testid": `edit-input-${r.id}`, defaultValue: r.name, onBlur: e => { setRows(rows.map(x => x.id === r.id ? { ...x, name: e.target.value } : x)); setEdit(null); }, autoFocus: true }) : r.name),
+                React.createElement("td", null, r.role),
+                React.createElement("td", null, r.age),
+                React.createElement("td", null,
+                    React.createElement("button", { "data-testid": `edit-${r.id}`, onClick: () => setEdit(r.id) }, "Edit"),
+                    " ",
+                    React.createElement("button", { "data-testid": `delete-${r.id}`, onClick: () => setRows(rows.filter(x => x.id !== r.id)) }, "Delete")))))),
+        view.length === 0 && React.createElement("p", { "data-testid": "table-empty" }, "No rows"),
+        React.createElement("button", { "data-testid": "tbl-prev", disabled: page <= 1, onClick: () => setPage(page - 1) }, "Prev"),
+        " ",
+        React.createElement("span", { "data-testid": "tbl-page" },
+            "Page ",
+            page,
+            " of ",
+            pages),
+        " ",
+        React.createElement("button", { "data-testid": "tbl-next", disabled: page >= pages, onClick: () => setPage(page + 1) }, "Next"));
+}
+function Alerts() {
+    const [o, setO] = useState('');
+    return React.createElement(Page, { id: "alerts", title: "Alerts" },
+        React.createElement("button", { "data-testid": "btn-alert", onClick: () => { alert('Hello from Nivi!'); setO('Alert closed'); } }, "Alert"),
+        React.createElement("button", { "data-testid": "btn-confirm", onClick: () => setO(confirm('Are you sure?') ? 'You pressed OK' : 'You pressed Cancel') }, "Confirm"),
+        React.createElement("button", { "data-testid": "btn-prompt", onClick: () => { const n = prompt('Your name?', 'Guest'); setO(n === null ? 'Prompt cancelled' : `Hello, ${n}`); } }, "Prompt"),
+        React.createElement(Out, { v: o, id: "alert-result" }));
+}
+const inner = '<h2 id=inner>Inner frame</h2><button id=inner-btn onclick="this.textContent=\'Clicked inner\'">Click inner</button>';
+const outer = `<h2 id=outer>Outer frame</h2><button id=outer-btn onclick="this.textContent='Clicked outer'">Click outer</button><iframe title="nested-frame" data-testid="nested-frame" srcdoc="${inner.replace(/"/g, '&quot;')}"></iframe>`;
+const Frames = () => React.createElement(Page, { id: "frames", title: "Frames" },
+    React.createElement("iframe", { title: "simple-frame", "data-testid": "simple-frame", srcDoc: inner }),
+    React.createElement("iframe", { title: "outer-frame", "data-testid": "outer-frame", srcDoc: outer }));
+const Windows = () => React.createElement(Page, { id: "windows", title: "Windows / Tabs" },
+    React.createElement("button", { "data-testid": "open-popup", onClick: () => window.open(location.href.split('#')[0] + '#/popup', 'popup', 'width=400,height=300') }, "Open popup"),
+    React.createElement("a", { href: "#/popup", target: "_blank", rel: "noopener", "data-testid": "open-tab" }, "Open new tab"),
+    " ",
+    React.createElement("a", { href: "#/products", target: "_blank", rel: "noopener", "data-testid": "open-tab-2" }, "Open products tab"));
+const Popup = () => React.createElement(Page, { id: "popup", title: "Popup Window" },
+    React.createElement("p", { "data-testid": "popup-text" }, "I am a child window"));
+function Upload() {
+    const [files, setFiles] = useState([]);
+    return React.createElement(Page, { id: "upload", title: "File Upload" },
+        React.createElement("label", { htmlFor: "single" }, "Single file"),
+        React.createElement("input", { id: "single", type: "file", "data-testid": "upload-single", onChange: e => setFiles(Array.from(e.target.files || []).map(f => f.name)) }),
+        React.createElement("label", { htmlFor: "multi" }, "Multiple files"),
+        React.createElement("input", { id: "multi", type: "file", multiple: true, "data-testid": "upload-multi", onChange: e => setFiles(Array.from(e.target.files || []).map(f => f.name)) }),
+        React.createElement("ul", { "data-testid": "upload-list" }, files.map(f => React.createElement("li", { key: f }, f))),
+        React.createElement("p", { "data-testid": "upload-count" },
+            files.length,
+            " file(s) selected"));
+}
+function Drag() {
+    const [l, setL] = useState(['Item 1', 'Item 2', 'Item 3', 'Item 4']);
+    const from = useRef(-1);
+    return React.createElement(Page, { id: "drag", title: "Drag & Drop" },
+        React.createElement("ul", { "data-testid": "sortable" }, l.map((x, i) => React.createElement("li", { key: x, draggable: true, "data-testid": `drag-${i + 1}`, onDragStart: () => (from.current = i), onDragOver: e => e.preventDefault(), onDrop: () => { const n = [...l]; const [m] = n.splice(from.current, 1); n.splice(i, 0, m); setL(n); } }, x))));
+}
+function MouseKb() {
+    const [o, setO] = useState({ hover: 'not hovered', ctx: '', dbl: '', key: '' });
+    return React.createElement(Page, { id: "mk", title: "Mouse & Keyboard" },
+        React.createElement("div", { tabIndex: 0, "data-testid": "hover-box", onMouseEnter: () => setO({ ...o, hover: 'hovered' }), onMouseLeave: () => setO({ ...o, hover: 'not hovered' }) }, "Hover me"),
+        React.createElement("p", { "data-testid": "hover-status" }, o.hover),
+        React.createElement("div", { "data-testid": "ctx-box", onContextMenu: e => { e.preventDefault(); setO({ ...o, ctx: 'Right-clicked' }); } }, "Right-click me"),
+        React.createElement("p", { "data-testid": "ctx-status" }, o.ctx),
+        React.createElement("button", { "data-testid": "dbl-btn", onDoubleClick: () => setO({ ...o, dbl: 'Double-clicked' }) }, "Double-click me"),
+        React.createElement("p", { "data-testid": "dbl-status" }, o.dbl),
+        React.createElement("input", { "aria-label": "Keyboard input", "data-testid": "key-input", onKeyDown: e => setO({ ...o, key: `${e.ctrlKey ? 'Ctrl+' : ''}${e.key}` }) }),
+        React.createElement("p", { "data-testid": "key-status" }, o.key));
+}
+function ApiPlayground() {
+    const [m, setM] = useState('GET');
+    const [url, setUrl] = useState('/api/items');
+    const [body, setBody] = useState('{"name":"Keyboard","qty":2}');
+    const [res, setRes] = useState({});
+    const send = async () => { let b; try {
+        b = ['GET', 'DELETE'].includes(m) ? undefined : JSON.parse(body);
+    }
+    catch {
+        return setRes({ status: 0, data: 'Invalid JSON body' });
+    } setRes(await api(url, { method: m, body: b })); };
+    return React.createElement(Page, { id: "api", title: "API Playground" },
+        React.createElement("select", { "aria-label": "Method", "data-testid": "api-method", value: m, onChange: e => setM(e.target.value) }, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(x => React.createElement("option", { key: x }, x))),
+        React.createElement("input", { "aria-label": "URL", "data-testid": "api-url", value: url, onChange: e => setUrl(e.target.value) }),
+        React.createElement("textarea", { "aria-label": "Request body", "data-testid": "api-body", value: body, onChange: e => setBody(e.target.value) }),
+        React.createElement("button", { "data-testid": "api-send", onClick: send }, "Send"),
+        React.createElement("p", null,
+            "Status: ",
+            React.createElement("span", { "data-testid": "api-status" }, res.status)),
+        React.createElement(Out, { v: res.data ?? '', id: "api-response" }),
+        React.createElement("a", { href: "#/docs", "data-testid": "swagger-link" }, "Swagger docs"));
+}
+function Network() {
+    const [r, setR] = useState({});
+    const [busy, setBusy] = useState(false);
+    const [mock, setMock] = useState(false);
+    const call = async (u) => { setBusy(true); setR(mock ? { status: 200, data: { mocked: true } } : await api(u)); setBusy(false); };
+    return React.createElement(Page, { id: "network", title: "Network Testing" },
+        React.createElement("label", null,
+            React.createElement("input", { type: "checkbox", "data-testid": "mock-toggle", checked: mock, onChange: e => setMock(e.target.checked) }),
+            " Use built-in mock"),
+        React.createElement("div", null,
+            [200, 400, 401, 403, 404, 500].map(c => React.createElement("button", { key: c, "data-testid": `status-${c}`, onClick: () => call(`/api/status/${c}`) }, c)),
+            React.createElement("button", { "data-testid": "status-slow", onClick: () => call('/api/slow?ms=3000') }, "Slow (3s)"),
+            React.createElement("button", { "data-testid": "status-products", onClick: () => call('/api/products') }, "Products (mock target)")),
+        busy && React.createElement("p", { role: "status", "data-testid": "net-loading" }, "Loading\u2026"),
+        React.createElement("p", null,
+            "Status: ",
+            React.createElement("span", { "data-testid": "net-status" }, r.status)),
+        React.createElement(Out, { v: r.data ?? '', id: "net-response" }));
+}
+function Auth() {
+    const [me, setMe] = useState(null);
+    const tk = localStorage.getItem('token') || sessionStorage.getItem('token');
+    const load = async () => setMe(await api('/api/me'));
+    const logout = async () => { await api('/api/logout', { method: 'POST' }); localStorage.removeItem('token'); sessionStorage.removeItem('token'); setMe({ status: 0, data: 'Logged out' }); };
+    return React.createElement(Page, { id: "auth", title: "Authentication" },
+        React.createElement("p", { "data-testid": "token-value" }, tk || 'no token'),
+        React.createElement("button", { "data-testid": "get-me", onClick: load }, "GET /api/me"),
+        " ",
+        React.createElement("button", { "data-testid": "get-admin", onClick: async () => setMe(await api('/api/admin')) }, "GET /api/admin"),
+        React.createElement("button", { "data-testid": "expire-token", onClick: () => { localStorage.setItem('token', 'expired'); sessionStorage.removeItem('token'); } }, "Expire token"),
+        " ",
+        React.createElement("button", { "data-testid": "logout-btn", onClick: logout }, "Logout"),
+        me && React.createElement(React.Fragment, null,
+            React.createElement("p", null,
+                "Status: ",
+                React.createElement("span", { "data-testid": "auth-status" }, me.status)),
+            React.createElement(Out, { v: me.data, id: "auth-response" })));
+}
+function Sockets() {
+    const [msgs, setMsgs] = useState([]);
+    const [t, setT] = useState('');
+    const ws = useRef();
+    const [st, setSt] = useState('connecting');
+    useEffect(() => { const w = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`); ws.current = w; w.onopen = () => setSt('connected'); w.onclose = () => setSt('closed'); w.onmessage = e => setMsgs(m => [...m, e.data]); return () => w.close(); }, []);
+    return React.createElement(Page, { id: "ws", title: "WebSocket" },
+        React.createElement("p", { "data-testid": "ws-status" }, st),
+        React.createElement("input", { "aria-label": "Message", "data-testid": "ws-input", value: t, onChange: e => setT(e.target.value) }),
+        React.createElement("button", { "data-testid": "ws-send", onClick: () => { ws.current?.send(t); setT(''); } }, "Send"),
+        React.createElement("ul", { "data-testid": "ws-messages" }, msgs.map((m, i) => React.createElement("li", { key: i }, m))));
+}
+function Errors() {
+    const [s, setS] = useState('');
+    return React.createElement(Page, { id: "errors", title: "Error Pages" },
+        React.createElement("button", { "data-testid": "show-loading", onClick: () => { setS('loading'); setTimeout(() => setS('done'), 2500); } }, "Loading state"),
+        " ",
+        React.createElement("button", { "data-testid": "show-empty", onClick: () => setS('empty') }, "Empty state"),
+        " ",
+        React.createElement("button", { "data-testid": "show-500", onClick: () => setS('500') }, "500 error"),
+        React.createElement("a", { href: "#/does-not-exist", "data-testid": "go-404" }, "Go to missing page"),
+        s === 'loading' && React.createElement("p", { role: "status", "data-testid": "state-loading" }, "Loading\u2026"),
+        s === 'done' && React.createElement("p", { "data-testid": "state-done" }, "Loaded!"),
+        s === 'empty' && React.createElement("p", { "data-testid": "state-empty" }, "Nothing here yet"),
+        s === '500' && React.createElement("div", { role: "alert", "data-testid": "state-500" },
+            React.createElement("h2", null, "500 \u2013 Internal Server Error")));
+}
+const NotFound = () => React.createElement(Page, { id: "notfound", title: "404 \u2013 Page Not Found" },
+    React.createElement("p", { "data-testid": "notfound-text" }, "The page you requested does not exist."),
+    React.createElement("a", { href: "#/" }, "Back home"));
+const EP = [['POST', '/api/login', 'Login', '200, 400, 401'], ['POST', '/api/logout', 'Logout (Bearer)', '200, 401'], ['POST', '/api/register', 'Register', '201, 400, 409'], ['GET', '/api/me', 'Current user (Bearer)', '200, 401'], ['GET', '/api/admin', 'Admin only (Bearer)', '200, 401, 403'], ['GET', '/api/products', 'q, category, sort, page', '200'], ['GET', '/api/products/{id}', 'Product detail', '200, 404'], ['GET', '/api/items', 'List items', '200'], ['POST', '/api/items', 'Create item', '201, 400'], ['PUT', '/api/items/{id}', 'Replace item', '200, 404'], ['PATCH', '/api/items/{id}', 'Update item', '200, 404'], ['DELETE', '/api/items/{id}', 'Delete item', '204, 404'], ['GET', '/api/status/{code}', 'Return any status', 'any'], ['GET', '/api/slow?ms=3000', 'Delayed response', '200'], ['POST', '/api/reset', 'Reset items', '200']];
+const Docs = () => React.createElement(Page, { id: "docs", title: "API Documentation (OpenAPI-style)" },
+    React.createElement("p", null, "Bearer token comes from POST /api/login. Try any endpoint in the API Playground."),
+    React.createElement("div", { style: { overflowX: 'auto' } },
+        React.createElement("table", { "data-testid": "docs-table" },
+            React.createElement("thead", null,
+                React.createElement("tr", null,
+                    React.createElement("th", null, "Method"),
+                    React.createElement("th", null, "Path"),
+                    React.createElement("th", null, "Description"),
+                    React.createElement("th", null, "Status codes"))),
+            React.createElement("tbody", null, EP.map((e, i) => React.createElement("tr", { key: i }, e.map((c, j) => React.createElement("td", { key: j },
+                React.createElement("code", null, c)))))))));
+const SC = 'S01 valid login|S02 invalid login|S03 empty validation|S04 register mismatch|S05 search+sort|S06 pagination|S07 cart to checkout|S08 table delete|S09 alert/confirm/prompt|S10 nested iframe|S11 new tab|S12 multi upload|S13 drag and drop|S14 hover/right/double click|S15 keyboard|S16 API POST|S17 request mocking|S18 500/404|S19 401/403|S20 CRUD|S21 WebSocket|S22 404 page|S23 loading/500 states|S24 forms|S25 remember me|S26 expired token|S27 slow response|S28 empty search|S29 details modal|S30 duplicate register 409'.split('|');
+const Home = () => React.createElement(React.Fragment, null,
+    React.createElement("p", null, "Practice Playwright, Selenium, API testing and CI/CD. Everything runs in your browser (API, sessions and WebSocket are simulated)."),
+    React.createElement("h2", { "data-testid": "action-items-title" }, "Action Items"),
+    React.createElement("ol", { "data-testid": "action-items" }, NAV.filter(n => n[0] !== 'docs').map(([k, l]) => React.createElement("li", { key: k },
+        React.createElement("a", { href: `#/${k}`, "data-testid": `home-${k}` }, l)))),
+    React.createElement("h2", null, "Test credentials"),
+    React.createElement("ul", { "data-testid": "credentials" },
+        React.createElement("li", null, "User: qa.tester@nivi.dev / Test@1234"),
+        React.createElement("li", null, "Admin: admin@nivi.dev / Admin@1234"),
+        React.createElement("li", null, "Test card: 4111111111111111, ZIP: 600001")));
+const NAV = [['login', 'Login'], ['register', 'Register'], ['products', 'Products'], ['cart', 'Cart'], ['forms', 'Forms'], ['tables', 'Tables'], ['alerts', 'Alerts'], ['frames', 'Frames'], ['windows', 'Windows'], ['upload', 'Upload'], ['drag', 'Drag & Drop'], ['mouse', 'Mouse & Keyboard'], ['api', 'API'], ['network', 'Network'], ['auth', 'Auth'], ['websocket', 'WebSocket'], ['errors', 'Errors'], ['docs', 'API Docs']];
+function App() {
+    const [h, setH] = useState(location.hash.slice(2) || 'home');
+    const [cart, setCart] = useState([]);
+    useEffect(() => { const f = () => setH(location.hash.slice(2) || 'home'); addEventListener('hashchange', f); return () => removeEventListener('hashchange', f); }, []);
+    const add = (p) => setCart(c => c.find(i => i.id === p.id) ? c.map(i => i.id === p.id ? { ...i, qty: i.qty + 1 } : i) : [...c, { ...p, qty: 1 }]);
+    const pages = { login: React.createElement(Login, null), register: React.createElement(Register, null), products: React.createElement(Products, { add: add }), cart: React.createElement(Cart, { cart: cart, setCart: setCart }), forms: React.createElement(Forms, null), tables: React.createElement(Tables, null), alerts: React.createElement(Alerts, null), frames: React.createElement(Frames, null), windows: React.createElement(Windows, null), upload: React.createElement(Upload, null), drag: React.createElement(Drag, null), mouse: React.createElement(MouseKb, null), api: React.createElement(ApiPlayground, null), network: React.createElement(Network, null), auth: React.createElement(Auth, null), websocket: React.createElement(Sockets, null), errors: React.createElement(Errors, null), docs: React.createElement(Docs, null), popup: React.createElement(Popup, null),
+        home: React.createElement(Page, { id: "home", title: "Nivi's QA Automation Playground" },
+            React.createElement(Home, null)) };
+    return React.createElement(React.Fragment, null,
+        React.createElement("style", null, `body{font-family:system-ui,sans-serif;margin:0}nav{display:flex;flex-wrap:wrap;gap:8px;padding:12px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15)}nav a{color:#000;text-decoration:none;padding:4px 8px;border-radius:4px}nav a[aria-current=page]{background:#ff7b1d;color:#fff}main{padding:24px;max-width:900px;margin:24px auto;background:#fff;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.2)}input,select,textarea,button{margin:4px;padding:6px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;list-style:none;padding:0}.grid li,[role=dialog]{background:#fff7ed;border:1px solid #cbd5e1;padding:12px;border-radius:8px}[role=alert]{color:#b91c1c}li[draggable]{padding:8px;border:1px solid #94a3b8;margin:4px;cursor:grab;list-style:none}iframe{width:100%;height:160px;border:1px solid #94a3b8}[data-testid=hover-box],[data-testid=ctx-box]{padding:24px;background:#e2e8f0;margin:4px}`),
+        h !== 'popup' && React.createElement("nav", { "aria-label": "Main" }, NAV.map(([k, l]) => React.createElement("a", { key: k, href: `#/${k === 'mouse' ? 'mouse' : k}`, "data-testid": `nav-${k}`, "aria-current": h === k ? 'page' : undefined },
+            l,
+            k === 'cart' && cart.length ? ` (${cart.reduce((s, i) => s + i.qty, 0)})` : ''))),
+        React.createElement("main", null, pages[h] || React.createElement(NotFound, null)));
+}
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App, null));
+</script></body></html>

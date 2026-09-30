@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://qa-demo-app.github.io/qa-demo-app/sitemap.xml
